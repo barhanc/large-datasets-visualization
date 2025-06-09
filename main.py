@@ -19,25 +19,25 @@ import pacmap
 import trimap
 
 
-def load_dataset(path, count :int = -1) -> pd.DataFrame:
+def load_dataset(path, count: int = 0) -> pd.DataFrame:
 
     f = open(path, "r")
     data = json.loads(f.read())
 
-    if count != -1:
-        data = sample(data, count)
+    if count != 0:
+        data = data[:count]
 
     return pd.DataFrame(data)
 
-def load_embeddings(path, count: int = -1) -> np.ndarray:
+
+def load_embeddings(path, count: int = 0) -> np.ndarray:
     embeddings = np.load(path)
-    if count != -1:
+    if count != 0:
         embeddings = embeddings[:count]
     return embeddings
 
-def lda_topics(
-    tokenized_texts: List[List[str]], num_topics: int = 10
-) -> Tuple[List[int], LdaModel]:
+
+def lda_topics(tokenized_texts: List[List[str]], num_topics: int = 10) -> Tuple[List[int], LdaModel]:
     dictionary = Dictionary(tokenized_texts)
     corpus = [dictionary.doc2bow(text) for text in tokenized_texts]
     lda = LdaModel(corpus=corpus, num_topics=num_topics, id2word=dictionary, passes=8, random_state=42)
@@ -48,6 +48,7 @@ def lda_topics(
         dominant = max(topic_distribution, key=lambda x: x[1])[0]
         doc_topics.append(dominant)
     return doc_topics, lda
+
 
 def reduce_dimensions(X: np.ndarray, method: str = "umap", params: dict = {}) -> np.ndarray:
     if method == "umap":
@@ -91,18 +92,15 @@ def scatter_plots(df: pd.DataFrame):
         )
         st.plotly_chart(fig_cat, use_container_width=True)
 
+
 def topic_evolution_chart(df: pd.DataFrame):
-    date_series = pd.to_datetime(
-        df["date"].apply(lambda d: datetime(d["year"], d["month"], d["day"]))
-    )
+    date_series = pd.to_datetime(df["date"].apply(lambda d: datetime(d["year"], d["month"], d["day"])))
 
     df = df.copy()
     df["month"] = date_series.dt.to_period("M").astype(str)
 
     monthly = df.groupby(["month", "topic"]).size().reset_index(name="count")
-    total = df["month"].value_counts().rename("total").reset_index().rename(
-        columns={"index": "month"}
-    )
+    total = df["month"].value_counts().rename("total").reset_index().rename(columns={"index": "month"})
     monthly = monthly.merge(total, on="month")
     monthly["share"] = monthly["count"] / monthly["total"]
 
@@ -116,6 +114,7 @@ def topic_evolution_chart(df: pd.DataFrame):
     )
     fig.update_layout(xaxis_title="Month", yaxis_title="Topic Share")
     st.plotly_chart(fig, use_container_width=True)
+
 
 def sidebar_configuration() -> dict:
     st.sidebar.header("Configuration")
@@ -172,7 +171,7 @@ def main():
 
     # --------------------------- Data loading --------------------------------
     with st.spinner("Loading dataset …"):
-        df = load_dataset('processed_articles.json', count=cfg["sample_size"])
+        df = load_dataset("processed_articles.json", count=cfg["sample_size"])
 
     st.success(f"Loaded {len(df):,} articles.")
 
@@ -204,6 +203,7 @@ def main():
 
     st.header("Topic Evolution Over Time")
     topic_evolution_chart(df)
+
 
 if __name__ == "__main__":
     main()
