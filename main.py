@@ -16,6 +16,8 @@ from gensim.models.ldamodel import LdaModel
 from umap import UMAP
 from sklearn.manifold import TSNE
 import pacmap
+import trimap
+
 
 def load_dataset(path, count :int = -1) -> pd.DataFrame:
 
@@ -23,7 +25,7 @@ def load_dataset(path, count :int = -1) -> pd.DataFrame:
     data = json.loads(f.read())
 
     if count != -1:
-        data = sample(data, count) 
+        data = sample(data, count)
 
     return pd.DataFrame(data)
 
@@ -48,15 +50,19 @@ def lda_topics(
         doc_topics.append(dominant)
     return doc_topics, lda
 
-def reduce_dimensions(X: np.ndarray, method: str = "umap") -> np.ndarray:
-    
-    reducer_dict = {
-        "umap": UMAP(n_components=2, random_state=42),
-        "tsne": TSNE(n_components=2, random_state=42),
-        "pacmap": pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0)
-    }
+def reduce_dimensions(X: np.ndarray, method: str = "umap", params: dict = {}) -> np.ndarray:
+    if method == "umap":
+        reducer = UMAP(n_components=2, random_state=42, **params)
+    elif method == "tsne":
+        reducer = TSNE(n_components=2, random_state=42, **params)
+    elif method == "pacmap":
+        reducer = pacmap.PaCMAP(n_components=2, **params)
+    elif method == "trimap":
+        reducer = trimap.TRIMAP(n_dims=2, **params)
+    else:
+        raise ValueError(f"Unknown dimensionality reduction method: {method}")
+    return reducer.fit_transform(X)
 
-    return reducer_dict[method].fit_transform(X)
 
 def scatter_plots(df: pd.DataFrame):
     df["topic"] = pd.Categorical(df["topic"])
@@ -123,15 +129,37 @@ def sidebar_configuration() -> dict:
         "Dimensionality-reduction algorithm", ["umap", "tsne", "pacmap", "trimap"], index=0
     )
 
+    dr_params = {}
+    if dr_method == "umap":
+        dr_params["n_neighbors"] = st.sidebar.slider("UMAP: n_neighbors", 5, 100, 15)
+        dr_params["min_dist"] = st.sidebar.slider("UMAP: min_dist", 0.0, 1.0, 0.1)
+        dr_params["metric"] = st.sidebar.selectbox("UMAP: metric", ["euclidean", "manhattan", "cosine"])
+    elif dr_method == "tsne":
+        dr_params["perplexity"] = st.sidebar.slider("t-SNE: perplexity", 5, 50, 30)
+        dr_params["learning_rate"] = st.sidebar.slider("t-SNE: learning_rate", 10, 1000, 200)
+        dr_params["metric"] = st.sidebar.selectbox("t-SNE: metric", ["euclidean", "manhattan", "cosine"])
+    elif dr_method == "pacmap":
+        dr_params["n_neighbors"] = st.sidebar.slider("PaCMAP: n_neighbors", 5, 100, 10)
+        dr_params["MN_ratio"] = st.sidebar.slider("PaCMAP: MN_ratio", 0.0, 1.0, 0.5)
+        dr_params["FP_ratio"] = st.sidebar.slider("PaCMAP: FP_ratio", 1.0, 10.0, 2.0)
+        dr_params["distance"] = st.sidebar.selectbox("PaCMAP: distance", ["euclidean", "manhattan", "angular"])
+    elif dr_method == "trimap":
+        dr_params["n_inliers"] = st.sidebar.slider("TriMAP: n_inliers", 5, 100, 10)
+        dr_params["n_outliers"] = st.sidebar.slider("TriMAP: n_outliers", 1, 20, 5)
+        dr_params["n_random"] = st.sidebar.slider("TriMAP: n_random", 1, 10, 3)
+        dr_params["distance"] = st.sidebar.selectbox("TriMAP: distance", ["euclidean", "manhattan", "cosine"])
+
     num_topics = st.sidebar.slider("Number of LDA topics", 5, 40, 15)
     run_button = st.sidebar.button("Run analysis ▸")
 
     return {
         "sample_size": None if sample_size == 0 else sample_size,
         "dr_method": dr_method,
+        "dr_params": dr_params,
         "num_topics": num_topics,
         "run": run_button,
     }
+
 
 def main():
     st.set_page_config(page_title="High-Dimensional News Visualization", layout="wide")
@@ -169,7 +197,7 @@ def main():
 
     # ------------------- Dimensionality reduction ----------------------------
     with st.spinner("Reducing dimensions for visualization …"):
-        coords = reduce_dimensions(X, cfg["dr_method"])
+        coords = reduce_dimensions(X, cfg["dr_method"], cfg["dr_params"])
 
     df["x"], df["y"] = coords[:, 0], coords[:, 1]
 
