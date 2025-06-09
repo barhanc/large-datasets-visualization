@@ -50,15 +50,15 @@ def lda_topics(tokenized_texts: List[List[str]], num_topics: int = 10) -> Tuple[
     return doc_topics, lda
 
 
-def reduce_dimensions(X: np.ndarray, method: str = "umap", params: dict = {}) -> np.ndarray:
+def reduce_dimensions(X: np.ndarray, method: str = "umap", params: dict = {}, n_components: int = 2) -> np.ndarray:
     if method == "umap":
-        reducer = UMAP(n_components=2, random_state=42, **params)
+        reducer = UMAP(n_components=n_components, random_state=42, **params)
     elif method == "tsne":
-        reducer = TSNE(n_components=2, random_state=42, **params)
+        reducer = TSNE(n_components=n_components, random_state=42, **params)
     elif method == "pacmap":
-        reducer = pacmap.PaCMAP(n_components=2, **params)
+        reducer = pacmap.PaCMAP(n_components=n_components, **params)
     elif method == "trimap":
-        reducer = trimap.TRIMAP(n_dims=2, **params)
+        reducer = trimap.TRIMAP(n_dims=n_components, **params)
     else:
         raise ValueError(f"Unknown dimensionality reduction method: {method}")
     return reducer.fit_transform(X)
@@ -93,13 +93,48 @@ def scatter_plots(df: pd.DataFrame):
         st.plotly_chart(fig_cat, use_container_width=True)
 
 
+def plotly_3d_scatter(df: pd.DataFrame):
+    df["topic"] = pd.Categorical(df["topic"])
+    topic_order = sorted(df["topic"].unique())
+    col1, col2 = st.columns(2, gap="medium")
+
+    with col1:
+        fig_topic = px.scatter_3d(
+            df,
+            x="x",
+            y="y",
+            z="z",
+            color="topic",
+            category_orders={"topic": topic_order},
+            hover_data=["headline", "short_description", "date", "topic", "category"],
+            height=700,
+            opacity=0.7,
+        )
+        fig_topic.update_traces(marker=dict(size=4))
+        st.plotly_chart(fig_topic, use_container_width=True)
+
+    with col2:
+        fig_cat = px.scatter_3d(
+            df,
+            x="x",
+            y="y",
+            z="z",
+            color="category",
+            hover_data=["headline", "short_description", "date", "topic", "category"],
+            height=700,
+            opacity=0.7,
+        )
+        fig_cat.update_traces(marker=dict(size=4))
+        st.plotly_chart(fig_cat, use_container_width=True)
+
+
 def topic_evolution_chart(df: pd.DataFrame):
     date_series = pd.to_datetime(df["date"].apply(lambda d: datetime(d["year"], d["month"], d["day"])))
 
     df = df.copy()
     df["month"] = date_series.dt.to_period("M").astype(str)
 
-    monthly = df.groupby(["month", "topic"]).size().reset_index(name="count")
+    monthly = df.groupby(["month", "topic"], observed=False).size().reset_index(name="count")
     total = df["month"].value_counts().rename("total").reset_index().rename(columns={"index": "month"})
     monthly = monthly.merge(total, on="month")
     monthly["share"] = monthly["count"] / monthly["total"]
@@ -203,6 +238,15 @@ def main():
 
     st.header("Topic Evolution Over Time")
     topic_evolution_chart(df)
+
+    # ------------------- 3D Plotly Visualization ----------------------------
+    with st.spinner("Reducing dimensions for 3D plot …"):
+        coords_3d = reduce_dimensions(X, cfg["dr_method"], cfg["dr_params"], n_components=3)
+
+    df["x"], df["y"], df["z"] = coords_3d[:, 0], coords_3d[:, 1], coords_3d[:, 2]
+
+    st.header("3D Projection of Articles")
+    plotly_3d_scatter(df)
 
 
 if __name__ == "__main__":
