@@ -1,48 +1,44 @@
-from typing import List, Tuple
-
+import os
 import json
+
 from datetime import datetime
 
-import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
+import streamlit as st
 import plotly.express as px
 
-from random import sample
-from sklearn.feature_extraction.text import TfidfVectorizer
 from gensim.corpora import Dictionary
 from gensim.models.ldamodel import LdaModel
 
-from umap import UMAP
-from sklearn.manifold import TSNE
 import pacmap
 import trimap
 
+from umap import UMAP
+from sklearn.manifold import TSNE
 
-def load_dataset(path, count: int = 0) -> pd.DataFrame:
 
-    f = open(path, "r")
-    data = json.loads(f.read())
-
+def load_dataset(path: str, count: int = 0) -> pd.DataFrame:
+    with open(path, "r") as file:
+        data = json.loads(file.read())
     if count != 0:
         data = data[:count]
-
     return pd.DataFrame(data)
 
 
-def load_embeddings(path, count: int = 0) -> np.ndarray:
+def load_embeddings(path: str, count: int = 0) -> np.ndarray:
     embeddings = np.load(path)
     if count != 0:
         embeddings = embeddings[:count]
     return embeddings
 
 
-def lda_topics(tokenized_texts: List[List[str]], num_topics: int = 10) -> Tuple[List[int], LdaModel]:
+def lda_topics(tokenized_texts: list[list[str]], num_topics: int = 10) -> tuple[list[int], LdaModel]:
     dictionary = Dictionary(tokenized_texts)
     corpus = [dictionary.doc2bow(text) for text in tokenized_texts]
     lda = LdaModel(corpus=corpus, num_topics=num_topics, id2word=dictionary, passes=8, random_state=42)
 
-    doc_topics: List[int] = []
+    doc_topics: list[int] = []
     for bow in corpus:
         topic_distribution = lda.get_document_topics(bow)
         dominant = max(topic_distribution, key=lambda x: x[1])[0]
@@ -195,6 +191,9 @@ def sidebar_configuration() -> dict:
 
 
 def main():
+    DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+    DATASET_NAME = "News_Category_Dataset_v3"
+
     st.set_page_config(page_title="High-Dimensional News Visualization", layout="wide")
     st.title("High-Dimensional Text Visualization of HuffPost News")
 
@@ -206,13 +205,13 @@ def main():
 
     # --------------------------- Data loading --------------------------------
     with st.spinner("Loading dataset …"):
-        df = load_dataset("processed_articles.json", count=cfg["sample_size"])
+        df = load_dataset(f"{DATA_DIR}/{DATASET_NAME}_processed.json", count=cfg["sample_size"])
 
     st.success(f"Loaded {len(df):,} articles.")
 
     # ------------------------- Embedding loading ---------------------------
     with st.spinner("Loading precomputed BERT embeddings …"):
-        X = load_embeddings("bert_embeddings.npy", cfg["sample_size"])
+        X = load_embeddings(f"{DATA_DIR}/{DATASET_NAME}_bert_embeddings.npy", cfg["sample_size"])
     st.success("Loaded BERT embeddings.")
 
     # ------------------------- Topic modelling ----------------------
