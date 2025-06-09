@@ -29,12 +29,11 @@ def load_dataset(path, count :int = -1) -> pd.DataFrame:
 
     return pd.DataFrame(data)
 
-def vectorize(texts: List[str]) -> Tuple[np.ndarray, TfidfVectorizer]:
-    tfidf = TfidfVectorizer(
-        max_features=10_000, ngram_range=(1, 2), stop_words="english"
-    )
-    vecs = tfidf.fit_transform(texts)
-    return vecs.toarray(), tfidf
+def load_embeddings(path, count: int = -1) -> np.ndarray:
+    embeddings = np.load(path)
+    if count != -1:
+        embeddings = embeddings[:count]
+    return embeddings
 
 def lda_topics(
     tokenized_texts: List[List[str]], num_topics: int = 10
@@ -177,15 +176,14 @@ def main():
 
     st.success(f"Loaded {len(df):,} articles.")
 
-    # ------------------------- Vectorizing ---------------------------------
-    with st.spinner("Vectorizing …"):
-        tokenized = df["processed_headline"] + df["processed_short_description"]
-        X, _ = vectorize([" ".join(toks) for toks in tokenized])
-
-    st.success(f"Vectorized articles.")
+    # ------------------------- Embedding loading ---------------------------
+    with st.spinner("Loading precomputed BERT embeddings …"):
+        X = load_embeddings("bert_embeddings.npy", cfg["sample_size"])
+    st.success("Loaded BERT embeddings.")
 
     # ------------------------- Topic modelling ----------------------
     with st.spinner("Running LDA topic model …"):
+        tokenized = df["processed_headline"] + df["processed_short_description"]
         doc_topics, lda_model = lda_topics(tokenized, cfg["num_topics"])
 
     df["topic"] = doc_topics
