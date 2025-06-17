@@ -18,19 +18,22 @@ from umap import UMAP
 from sklearn.manifold import TSNE
 
 
-def load_dataset(path: str, count: int = 0) -> pd.DataFrame:
+def load_dataset(path: str, start_date: datetime, end_date: datetime, count: int = 0) -> pd.DataFrame:
     with open(path, "r") as file:
-        data = json.loads(file.read())
-    if count != 0:
-        data = data[:count]
-    return pd.DataFrame(data)
+        data = pd.DataFrame(json.loads(file.read()))
+
+    data["parsed_date"] = pd.to_datetime(data["date"].apply(lambda d: datetime(d["year"], d["month"], d["day"])))
+    data = data[(data["parsed_date"] >= start_date) & (data["parsed_date"] <= end_date)]
+    
+    if 0 < count < len(data):
+        data = data.sample(count)
+    
+    return data, data.index.to_numpy()
 
 
-def load_embeddings(path: str, count: int = 0) -> np.ndarray:
+def load_embeddings(path: str, idxs: np.ndarray) -> np.ndarray:
     embeddings = np.load(path)
-    if count != 0:
-        embeddings = embeddings[:count]
-    return embeddings
+    return embeddings[idxs]
 
 
 def lda_topics(tokenized_texts: list[list[str]], num_topics: int = 10) -> tuple[list[int], LdaModel]:
@@ -154,6 +157,13 @@ def sidebar_configuration() -> dict:
         "Sample size (0 = all)", min_value=0, max_value=200_000, value=20_000, step=1_000
     )
 
+    date_range = st.sidebar.date_input(
+        "Select date range",
+        [min_date := datetime(2012, 1, 1), max_date := datetime(2023, 1, 1)],
+        min_value=min_date,
+        max_value=max_date,
+    )
+
     dr_method = st.sidebar.selectbox(
         "Dimensionality-reduction algorithm", ["umap", "tsne", "pacmap", "trimap"], index=0
     )
@@ -187,6 +197,7 @@ def sidebar_configuration() -> dict:
         "dr_params": dr_params,
         "num_topics": num_topics,
         "run": run_button,
+        "date_range": date_range,
     }
 
 
@@ -205,13 +216,19 @@ def main():
 
     # --------------------------- Data loading --------------------------------
     with st.spinner("Loading dataset …"):
-        df = load_dataset(f"{DATA_DIR}/{DATASET_NAME}_processed.json", count=cfg["sample_size"])
+        start_date, end_date = pd.to_datetime(cfg["date_range"][0]), pd.to_datetime(cfg["date_range"][1])
+        df, idxs = load_dataset(
+            f"{DATA_DIR}/{DATASET_NAME}_processed.json",
+            start_date,
+            end_date,
+            count=cfg["sample_size"],
+        )
 
     st.success(f"Loaded {len(df):,} articles.")
 
     # ------------------------- Embedding loading ---------------------------
     with st.spinner("Loading precomputed BERT embeddings …"):
-        X = load_embeddings(f"{DATA_DIR}/{DATASET_NAME}_bert_embeddings.npy", cfg["sample_size"])
+        X = load_embeddings(f"{DATA_DIR}/{DATASET_NAME}_bert_embeddings.npy", idxs)
     st.success("Loaded BERT embeddings.")
 
     # ------------------------- Topic modelling ----------------------
